@@ -7,8 +7,37 @@ import {
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+import mammoth from 'mammoth';
 import { LessonPlanRequest, ApiResponse } from './types';
 import { cn } from './lib/utils';
+
+const systemInstructionText = `Bạn là một Chuyên gia cao cấp về Phương pháp luận Giáo dục và Chuyển đổi số, có am hiểu sâu sắc về các quy định, thông tư của Bộ Giáo dục và Đào tạo Việt Nam. Vai trò của bạn là trợ lý đắc lực cho giáo viên trong việc thiết kế giáo án (Kế hoạch bài dạy) hiện đại, tuân thủ nghiêm ngặt Khung năng lực số dành cho học sinh và giáo viên. Bạn không chỉ là một công cụ viết lách, mà là một cố vấn chuyên môn có khả năng phân tích dữ liệu cũ và chuyển đổi chúng thành các sản phẩm giáo dục chuẩn hóa thế kỷ 21.
+
+1. Tạo mới giáo án chuẩn hóa: Hỗ trợ giáo viên xây dựng giáo án từ ý tưởng sơ khai, đảm bảo đầy đủ các thành phần: Mục tiêu bài học (Kiến thức, Năng lực, Phẩm chất), Thiết bị dạy học, và Tiến trình dạy học theo các công văn hướng dẫn mới nhất (ví dụ: Công văn 5512/BGDĐT).
+2. Số hóa và Nâng cấp (Refactor): Phân tích nội dung giáo án cũ để trích xuất cốt lõi chuyên môn, sau đó tự động tái cấu trúc và bổ sung các chỉ số năng lực số phù hợp với chương trình giáo dục phổ thông mới.
+3. Chuẩn hóa kỹ thuật MathType: Đảm bảo toàn bộ công thức Toán học, Vật lý, Hóa học được soạn thảo bằng định dạng trung gian (LaTeX/MathML) có khả năng chuyển đổi hoàn hảo sang đối tượng MathType có thể chỉnh sửa được trên Microsoft Word.
+4. Tối ưu hóa năng lực số: Tích hợp các hoạt động ứng dụng CNTT vào giáo án một cách tự nhiên, giúp học sinh phát triển năng lực khai thác, quản lý và sáng tạo trên môi trường số.
+
+Guidelines & Rules:
+- Tuân thủ khung năng lực: Mọi mục tiêu bài học phải được tham chiếu dựa trên Khung năng lực số của Bộ GD&ĐT. Các hoạt động học tập phải thể hiện rõ việc ứng dụng công cụ số.
+- Quy trình xử lý tệp cũ: Phân tích, nhận diện, đề xuất chỉnh sửa: Giữ nguyên giá trị chuyên môn, thay đổi phương pháp sư phạm.
+- Quy định về Công thức (Quan trọng):
+  - TẤT CẢ công thức toán học/khoa học phải được viết bằng cú pháp LaTeX (ví dụ: \`$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$\`).
+  - Không được sử dụng định dạng văn bản thuần túy hoặc hình ảnh cho công thức.
+  - Đảm bảo cấu trúc LaTeX chuẩn để hệ thống backend có thể biên dịch chính xác sang đối tượng MathType khi xuất file Word.
+- Cấu trúc giáo án: Phải bao gồm các phần: Tên bài học, Mục tiêu, Thiết bị dạy học và học liệu số, Tiến trình dạy học (Gồm 4 hoạt động: Xác định vấn đề; Hình thành kiến thức; Luyện tập; Vận dụng).
+- Kiểm chứng: Bạn phải tự kiểm tra xem giáo án đã tích hợp đủ ít nhất 2 chỉ số năng lực số hay chưa trước khi phản hồi.
+
+Tone & Persona: Chuyên nghiệp, học thuật, chính xác nhưng vẫn đảm bảo tính gợi mở và sáng tạo. Tiếng Việt chuẩn mực sư phạm.
+Output Format: Trình bày theo cấu trúc Markdown rõ ràng.
+
+1. Phần tổng quan: Tóm tắt thay đổi hoặc các điểm nhấn năng lực số.
+2. Nội dung chi tiết:
+  - I. Mục tiêu
+  - II. Thiết bị & Học liệu số
+  - III. Tiến trình dạy học
+3. Khu vực công thức: Các công thức lồng ghép trong nội dung phải ở dạng LaTeX chuẩn.
+4. Ghi chú kỹ thuật: Xác nhận về việc sẵn sàng xuất file Word với MathType editable.`;
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'create' | 'refactor'>('create');
@@ -53,6 +82,7 @@ export default function App() {
 
   const [isReadingFile, setIsReadingFile] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [uploadedPdf, setUploadedPdf] = useState<{ mimeType: string, data: string, fileName: string } | null>(null);
 
   const [isEditingMode, setIsEditingMode] = useState(false);
   const [isExportingDocx, setIsExportingDocx] = useState(false);
@@ -112,13 +142,8 @@ export default function App() {
     if (!result) return;
     setIsExportingDocx(true);
     try {
-      const response = await fetch('/api/export-docx', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ markdown: result })
-      });
-      if (!response.ok) throw new Error('Không thể xuất tệp Word.');
-      const blob = await response.blob();
+      const { exportMarkdownToDocx } = await import('./lib/docxExporter');
+      const blob = await exportMarkdownToDocx(result);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -127,7 +152,7 @@ export default function App() {
       a.click();
       document.body.removeChild(a);
     } catch (err: any) {
-      alert(err.message || 'Lỗi khi tải file Word.');
+      alert(err.message || 'Lỗi khi xuất file Word.');
     } finally {
       setIsExportingDocx(false);
     }
@@ -137,19 +162,9 @@ export default function App() {
     if (!result) return;
     setIsExportingPptx(true);
     try {
-      const response = await fetch('/api/export-pptx', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          markdown: result,
-          topic: topic,
-          subject: subject,
-          grade: grade
-        })
-      });
-      if (!response.ok) throw new Error('Không thể xuất tệp PowerPoint.');
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      const { exportMarkdownToPptx } = await import('./lib/pptxGenerator');
+      const blob = await exportMarkdownToPptx(result, topic, subject, grade);
+      const url = window.URL.createObjectURL(blob as Blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `Bai_giang_${(topic || 'chua_dat_ten').replace(/\s+/g, '_')}.pptx`;
@@ -157,13 +172,13 @@ export default function App() {
       a.click();
       document.body.removeChild(a);
     } catch (err: any) {
-      alert(err.message || 'Lỗi khi tải file PowerPoint.');
+      alert(err.message || 'Lỗi khi xuất file PowerPoint.');
     } finally {
       setIsExportingPptx(false);
     }
   };
 
-  const fetchWithFallback = async (promptText: string): Promise<string> => {
+  const fetchWithFallback = async (promptText: string, pdfData: any = null): Promise<string> => {
     const MODELS_LIST = ['gemini-3-flash-preview', 'gemini-3-pro-preview', 'gemini-2.5-flash'];
     const modelsToTry = [
       aiModel,
@@ -171,28 +186,70 @@ export default function App() {
     ];
 
     let lastError = '';
+    
+    if (!apiKey) {
+      setIsSettingsOpen(true);
+      throw new Error('Chưa cấu hình API Key. Vui lòng nhập API Key trong phần Cài đặt ở Header.');
+    }
+
     for (const currentModel of modelsToTry) {
       try {
-        const response = await fetch('/api/generate', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ 
-            prompt: promptText, 
-            apiKey: apiKey, 
-            model: currentModel 
-          }),
-        });
+        const mappedModel = currentModel === 'gemini-3-flash-preview' ? 'gemini-2.5-flash' 
+                         : currentModel === 'gemini-3-pro-preview' ? 'gemini-2.5-pro' 
+                         : currentModel;
 
-        const data: ApiResponse = await response.json();
+        const parts: any[] = [];
+        if (pdfData) {
+          parts.push({
+            inlineData: {
+              mimeType: pdfData.mimeType,
+              data: pdfData.data
+            }
+          });
+        }
+        parts.push({ text: promptText });
+
+        const requestBody = {
+          contents: [
+            {
+              role: 'user',
+              parts: parts
+            }
+          ],
+          generationConfig: {
+            temperature: 0.7
+          },
+          systemInstruction: {
+            parts: [
+              {
+                text: systemInstructionText
+              }
+            ]
+          }
+        };
+
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${mappedModel}:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestBody),
+          }
+        );
+
+        const data = await response.json();
 
         if (!response.ok) {
-          throw new Error(data.error || `Lỗi API từ model ${currentModel}`);
+          throw new Error(data.error?.message || `Lỗi API từ model ${currentModel}`);
         }
 
-        if (data.result) {
-          return data.result;
+        const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (generatedText) {
+          return generatedText;
+        } else {
+          throw new Error('Không nhận được phản hồi hợp lệ từ Gemini API.');
         }
       } catch (err: any) {
         console.warn(`Model ${currentModel} thất bại: ${err.message}. Đang thử model tiếp theo...`);
@@ -225,33 +282,46 @@ export default function App() {
     }
   };
 
+  const toBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => {
+      const base64String = (reader.result as string).split(',')[1];
+      resolve(base64String);
+    };
+    reader.onerror = error => reject(error);
+  });
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setIsReadingFile(true);
     setFileError(null);
+    setUploadedPdf(null);
 
-    const formData = new FormData();
-    formData.append('file', file);
+    const fileExtension = file.name.split('.').pop()?.toLowerCase();
 
     try {
-      const response = await fetch('/api/parse-file', {
-        method: 'POST',
-        body: formData,
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Lỗi khi trích xuất nội dung từ tệp.');
-      }
-
-      if (data.text) {
-        setOldContent(data.text);
+      if (fileExtension === 'docx') {
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        setOldContent(result.value);
+      } else if (fileExtension === 'doc') {
+        throw new Error('Định dạng .doc cũ không được hỗ trợ trong trình duyệt. Vui lòng chuyển đổi sang .docx hoặc .pdf rồi tải lại.');
+      } else if (fileExtension === 'pdf') {
+        const base64Data = await toBase64(file);
+        setUploadedPdf({
+          mimeType: 'application/pdf',
+          data: base64Data,
+          fileName: file.name
+        });
+        setOldContent(`[Tệp PDF đã tải lên: ${file.name}]\nAI sẽ tự động đọc trực tiếp từ tệp PDF này khi bạn bấm nút số hóa/nâng cấp giáo án.`);
+      } else {
+        throw new Error('Định dạng tệp không được hỗ trợ. Chỉ chấp nhận tệp .docx hoặc .pdf.');
       }
     } catch (err: any) {
-      setFileError(err.message);
+      setFileError(err.message || 'Lỗi khi trích xuất nội dung.');
     } finally {
       setIsReadingFile(false);
       e.target.value = '';
@@ -268,11 +338,15 @@ export default function App() {
     if (activeTab === 'create') {
       prompt = `Hãy tạo một giáo án chuẩn khung năng lực số cho môn ${subject}, lớp ${grade}, chủ đề: "${topic}". Vui lòng tuân thủ nghiêm ngặt các quy định về khung năng lực số và cấu trúc Markdown, LaTeX như trong System Instruction.`;
     } else {
-      prompt = `Hãy nâng cấp và số hóa giáo án cũ sau đây thuộc môn ${subject}, lớp ${grade}, chủ đề: "${topic}". Vui lòng tuân thủ nghiêm ngặt các quy định về khung năng lực số và cấu trúc Markdown, LaTeX như trong System Instruction. Nội dung cũ:\n\n${oldContent}`;
+      prompt = `Hãy nâng cấp và số hóa giáo án cũ thuộc môn ${subject}, lớp ${grade}, chủ đề: "${topic}". Vui lòng tuân thủ nghiêm ngặt các quy định về khung năng lực số và cấu trúc Markdown, LaTeX như trong System Instruction.`;
+      if (!uploadedPdf) {
+        prompt += ` Nội dung cũ:\n\n${oldContent}`;
+      }
     }
 
     try {
-      const generatedResult = await fetchWithFallback(prompt);
+      const pdfToPass = activeTab === 'refactor' ? uploadedPdf : null;
+      const generatedResult = await fetchWithFallback(prompt, pdfToPass);
       setResult(generatedResult);
     } catch (err: any) {
       setError(err.message);
