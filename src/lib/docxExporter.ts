@@ -32,7 +32,7 @@ function parseTextRuns(text: string): TextRun[] {
   return runs;
 }
 
-export async function exportMarkdownToDocx(markdown: string): Promise<Buffer> {
+export async function exportMarkdownToDocx(markdown: string): Promise<Blob> {
   const lines = markdown.split(/\r?\n/);
   const children: any[] = [];
   
@@ -293,5 +293,5 @@ export async function exportMarkdownToDocx(markdown: string): Promise<Buffer> {
     ]
   });
 
-  return await Packer.toBuffer(doc);
+  return await Packer.toBlob(doc);
 }
