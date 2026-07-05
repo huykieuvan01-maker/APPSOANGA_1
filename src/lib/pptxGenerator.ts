@@ -1,6 +1,6 @@
 import pptxgen from 'pptxgenjs';
 
-export async function exportMarkdownToPptx(markdown: string, topic: string, subject: string, grade: string): Promise<Buffer> {
+export async function exportMarkdownToPptx(markdown: string, topic: string, subject: string, grade: string): Promise<Blob> {
   const pptx = new pptxgen();
   pptx.layout = 'LAYOUT_169';
   
@@ -141,6 +141,6 @@ export async function exportMarkdownToPptx(markdown: string, topic: string, subj
   });
 
   // Generate buffer
-  const buffer = await pptx.write('nodebuffer');
-  return buffer as Buffer;
+  const blob = await pptx.write('blob');
+  return blob as Blob;
 }
