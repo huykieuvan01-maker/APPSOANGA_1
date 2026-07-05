@@ -179,10 +179,26 @@ export default function App() {
   };
 
   const fetchWithFallback = async (promptText: string, pdfData: any = null): Promise<string> => {
-    const MODELS_LIST = ['gemini-3-flash-preview', 'gemini-3-pro-preview', 'gemini-2.5-flash'];
+    const getMappedModel = (m: string) => {
+      if (m === 'gemini-3-flash-preview') return 'gemini-2.5-flash';
+      if (m === 'gemini-3-pro-preview') return 'gemini-2.5-pro';
+      return m;
+    };
+
+    const selectedMapped = getMappedModel(aiModel);
+    
+    // Comprehensive fallback models chain (standard AI Studio models)
+    const actualModelsChain = [
+      'gemini-2.5-flash',
+      'gemini-2.0-flash',
+      'gemini-1.5-flash',
+      'gemini-2.5-pro',
+      'gemini-1.5-pro'
+    ];
+
     const modelsToTry = [
-      aiModel,
-      ...MODELS_LIST.filter(m => m !== aiModel)
+      selectedMapped,
+      ...actualModelsChain.filter(m => m !== selectedMapped)
     ];
 
     let lastError = '';
@@ -194,9 +210,7 @@ export default function App() {
 
     for (const currentModel of modelsToTry) {
       try {
-        const mappedModel = currentModel === 'gemini-3-flash-preview' ? 'gemini-2.5-flash' 
-                         : currentModel === 'gemini-3-pro-preview' ? 'gemini-2.5-pro' 
-                         : currentModel;
+        console.log(`Đang thử gọi model: ${currentModel}`);
 
         const parts: any[] = [];
         if (pdfData) {
@@ -229,7 +243,7 @@ export default function App() {
         };
 
         const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${mappedModel}:generateContent?key=${apiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`,
           {
             method: 'POST',
             headers: {
